@@ -27,11 +27,25 @@ switch (choice)
 
 // Methods to initialize & run different game sizes
 
+/* 
+
+SETUP INFO
+1. Placements (player, start location, fountain, etc.) must be 1 less than the total number of rows and columns. 
+        Example: 4x4 map, the starting location is limited to 3 for rows & 3 for columns. (3, 3) will be the top-right corner to create the entrance, (0, 0) will be bottom-right.
+2. Amaroks must not be placed on the start location or fountain
+3. Fountian must not be placed at the start location
+4. The player is initialized in the game class itself
+*/
+
 void RunSmallGame()
 {
     int rows = 4;
     int columns = 4;
-    Game Game = new(rows, columns, new Player(), new FountainOfObjects(new Location(0, 2)));
+
+    Location startLocation = new Location(0, 0);
+    FountainOfObjects fountain = new(new Location(0, 2));
+
+    Game Game = new(rows, columns, startLocation, fountain);
     Game.Run();
 }
 
@@ -39,29 +53,33 @@ void RunMediumGame()
 {
     int rows = 6;
     int columns = 6;
-    Game Game = new(rows, columns, new Player(), new FountainOfObjects(new Location(0, 3)));
 
+    Location startLocation = new Location(5, 0);
+    FountainOfObjects fountain = new(new Location(0, 5));
     Amarok amarok1 = new Amarok(new Location(0, 1));
-    Amarok amarok2 = new Amarok(new Location(3, 3));
+    Amarok amarok2 = new Amarok(new Location(5, 5));
 
+    Game Game = new(rows, columns, startLocation, fountain);
     Game.AddMonster(amarok1);
     Game.AddMonster(amarok2);
-
     Game.Run();
 }
 
 void RunLargeGame()
 {
-    int rows = 9;
-    int columns = 9;
-    Game Game = new(rows, columns, new Player(), new FountainOfObjects(new Location(0, 5)));
+    int rows = 8;
+    int columns = 8;
 
+    Location startLocation = new Location(7, 7);
+    FountainOfObjects fountain = new(new Location(0, 5));
     Amarok amarok1 = new Amarok(new Location(0, 1));
     Amarok amarok2 = new Amarok(new Location(5, 7));
+    Amarok amarok3 = new Amarok(new Location(5, 7));
 
+    Game Game = new(rows, columns, startLocation, fountain);
     Game.AddMonster(amarok1);
     Game.AddMonster(amarok2);
-
+    Game.AddMonster(amarok3);
     Game.Run();
 }
 
@@ -69,18 +87,19 @@ void RunLargeGame()
 public class Game
 {
     public Player Player { get; init; }
+    Map Map { get; init; }
     public FountainOfObjects Fountain { get; init; }
     public IMonster[,] Monsters; // Stores the monster type within each room
-    Map Map;
     Location StartLocation = new(0, 0);
     public bool GameWon { get; private set; } = false;
 
-    public Game(int rows, int columns, Player player, FountainOfObjects fountain)
+    public Game(int rows, int columns, Location startLocation, FountainOfObjects fountain)
     {
         Monsters = new IMonster[rows, columns];
-        Player = player;
+        StartLocation = startLocation;
         Fountain = fountain;
         Map = new(rows, columns);
+        Player = new(startLocation, Map, fountain);
     }
 
     public void Run()
@@ -97,7 +116,7 @@ public class Game
             ConsoleHelper.Write("What do you want to do? ", ConsoleColor.White);
             while (true)
             {
-                bool actionSuccess = RunPlayerAction();
+                bool actionSuccess = Player.RunPlayerAction();
                 if (actionSuccess) break;
             }
 
@@ -121,44 +140,6 @@ public class Game
 
             Console.WriteLine("---------------------------------------------------------------------------------------");
         }
-    }
-
-    public bool RunPlayerAction()
-    {
-        Location previousLocation = Player.Location;
-        bool atCaveEntrance = Player.AtCaveEntrance();
-        string choice = Console.ReadLine();
-        switch (choice)
-        {
-            case "move north":
-                MovePlayer(1, 0);
-                if (Player.Location == previousLocation) ConsoleHelper.WriteLine("There is a wall here.", ConsoleColor.Red);
-                return true;
-            case "move south":
-                MovePlayer(-1, 0);
-                if (Player.Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
-                return true;
-            case "move west":
-                MovePlayer(0, -1);
-                if (Player.Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
-                return true;
-            case "move east":
-                MovePlayer(0, 1);
-                if (Player.Location == previousLocation) ConsoleHelper.WriteLine("There is a wall here.", ConsoleColor.Red);
-                return true;
-            case "enable fountain":
-                Fountain.Activate(Player);
-                if (!Fountain.Activated) ConsoleHelper.WriteLine("The Fountain of Objects is not in this room.", ConsoleColor.Red);
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private void MovePlayer(int rowOffset, int ColumnOffset)
-    {
-        Location newLocation = new(Player.Location.Row + rowOffset, Player.Location.Column + ColumnOffset);
-        if (Map.IsWithinMap(newLocation)) Player.Location = newLocation;
     }
 
     public void AddMonster(IMonster monster) {
@@ -217,6 +198,7 @@ public class Map
 
     public RoomType GetRoomType(int row, int column)
     {
+        //Console.WriteLine($"Debug: Checking if row {row} and column {column} are within the map: {IsWithinMap(row, column)}.");
         if (!IsWithinMap(row, column))
             return RoomType.OutOfBounds;
         return Rooms[row, column];
@@ -236,10 +218,58 @@ public class Map
 
 public class Player
 {
-    public Location Location { get; set; } = new(0, 0);
+    public Location StartLocation { get; init; }
+    public Location Location { get; set; }
+    Map Map { get; init; }
+    public FountainOfObjects Fountain { get; init; }
     public bool IsAlive { get; set; } = true;
 
-    public bool AtCaveEntrance() => Location.Row == 0 && Location.Column == 0;
+    public Player(Location startLocation, Map map, FountainOfObjects fountain)
+    {
+        StartLocation = startLocation;
+        Location = startLocation;
+        Map = map;
+        Fountain = fountain;
+    }
+
+    public bool RunPlayerAction()
+    {
+        Location previousLocation = Location;
+        bool atCaveEntrance = AtCaveEntrance();
+        string choice = Console.ReadLine();
+        switch (choice)
+        {
+            case "move north":
+                MovePlayer(1, 0);
+                if (Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
+                return true;
+            case "move south":
+                MovePlayer(-1, 0);
+                if (Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
+                return true;
+            case "move west":
+                MovePlayer(0, -1);
+                if (Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
+                return true;
+            case "move east":
+                MovePlayer(0, 1);
+                if (Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
+                return true;
+            case "activate fountain":
+                Fountain.Activate(this);
+                if (!Fountain.Activated) ConsoleHelper.WriteLine("The Fountain of Objects is not in this room.", ConsoleColor.Red);
+                return true;
+            default:
+                return false;
+        }
+    }
+    private void MovePlayer(int rowOffset, int ColumnOffset)
+    {
+        Location newLocation = new(Location.Row + rowOffset, Location.Column + ColumnOffset);
+        if (Map.IsWithinMap(newLocation)) Location = newLocation;
+    }
+
+    public bool AtCaveEntrance() => Location == StartLocation;
 }
 
 public class FountainOfObjects
