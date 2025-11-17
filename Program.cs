@@ -6,24 +6,73 @@ using System.Data.Common;
 using System.Drawing;
 using System.Windows.Input;
 
-int rows = 4;
-int columns = 4;
-Game Game = new(rows, columns, new Player(), new FountainOfObjects(new Location(0, 2)));
+Console.Write("What map size do you want to run? small / medium / large: ");
+string choice = Console.ReadLine();
+switch (choice)
+{
+    case "small":
+        RunSmallGame();
+        break;
+    case "medium":
+        RunMediumGame();
+        break;
+    case "large":
+        RunLargeGame();
+        break;
+    default:
+        Console.WriteLine("Invalid input. Defaulting to medium.");
+        RunMediumGame();
+        break;
+}
 
-Amarok amarok1 = new Amarok(new Location(0, 1));
-Amarok amarok2 = new Amarok(new Location(3, 3));
+// Methods to initialize & run different game sizes
 
-Game.AddMonster(amarok1);
-Game.AddMonster(amarok2);
+void RunSmallGame()
+{
+    int rows = 4;
+    int columns = 4;
+    Game Game = new(rows, columns, new Player(), new FountainOfObjects(new Location(0, 2)));
+    Game.Run();
+}
 
-Game.Run();
+void RunMediumGame()
+{
+    int rows = 6;
+    int columns = 6;
+    Game Game = new(rows, columns, new Player(), new FountainOfObjects(new Location(0, 3)));
 
+    Amarok amarok1 = new Amarok(new Location(0, 1));
+    Amarok amarok2 = new Amarok(new Location(3, 3));
+
+    Game.AddMonster(amarok1);
+    Game.AddMonster(amarok2);
+
+    Game.Run();
+}
+
+void RunLargeGame()
+{
+    int rows = 9;
+    int columns = 9;
+    Game Game = new(rows, columns, new Player(), new FountainOfObjects(new Location(0, 5)));
+
+    Amarok amarok1 = new Amarok(new Location(0, 1));
+    Amarok amarok2 = new Amarok(new Location(5, 7));
+
+    Game.AddMonster(amarok1);
+    Game.AddMonster(amarok2);
+
+    Game.Run();
+}
+
+// Main game handler
 public class Game
 {
     public Player Player { get; init; }
     public FountainOfObjects Fountain { get; init; }
     public IMonster[,] Monsters; // Stores the monster type within each room
     Map Map;
+    Location StartLocation = new(0, 0);
     public bool GameWon { get; private set; } = false;
 
     public Game(int rows, int columns, Player player, FountainOfObjects fountain)
@@ -42,7 +91,7 @@ public class Game
             InfoHelper.SendInfo(Player, Fountain);
 
             // Let them know if an amarok is near
-            if (NearAmarokRoom()) ConsoleHelper.WriteLine("You can smell the rotten stench of an amarok in a nearby room.", ConsoleColor.DarkRed);
+            if (Map.NearAmarokRoom(Player.Location)) ConsoleHelper.WriteLine("You can smell the rotten stench of an amarok in a nearby room.", ConsoleColor.DarkRed);
 
             // Request & accept movement input 
             ConsoleHelper.Write("What do you want to do? ", ConsoleColor.White);
@@ -63,8 +112,9 @@ public class Game
                 break;
             }
 
-            if (GameWon)
+            if (Fountain.Activated && Player.Location == StartLocation)
             {
+                GameWon = true;
                 ConsoleHelper.WriteLine("The Fountain of Objects has been restored! You win!", ConsoleColor.Magenta);
                 break;
             }
@@ -111,38 +161,6 @@ public class Game
         if (Map.IsWithinMap(newLocation)) Player.Location = newLocation;
     }
 
-    public bool NearAmarokRoom()
-    {
-        int row = Player.Location.Row;
-        int column = Player.Location.Column;
-
-        //Console.WriteLine("Debug | Current row:" + row);
-        // Check if there is a monster above
-        if (Map.IsAmarokRoom(row + 1, column - 1) || Map.IsAmarokRoom(row + 1, column) || Map.IsAmarokRoom(row + 1, column + 1))
-        {
-            return true;
-        }
-
-        // Check if there is a monster to the left
-        else if (Map.IsAmarokRoom(row, column - 1))
-        {
-            return true;
-        }
-
-        // Check if there is a monster to the right
-        else if (Map.IsAmarokRoom(row, column + 1))
-        {
-            return true;
-        }
-
-        // Check if there is a monster below
-        else if (Map.IsAmarokRoom(row - 1, column - 1) || Map.IsAmarokRoom(row - 1, column) || Map.IsAmarokRoom(row - 1, column + 1))
-        {
-            return true;
-        }
-        return false;
-    }
-
     public void AddMonster(IMonster monster) {
         Monsters[monster.Location.Row, monster.Location.Column] = monster;
         Map.SetRoomType(monster.Location.Row, monster.Location.Column, RoomType.Amarok);
@@ -165,6 +183,38 @@ public class Map
         Columns = columns;
     }
 
+    public bool NearAmarokRoom(Location location)
+    {
+        int row = location.Row;
+        int column = location.Column;
+
+        //Console.WriteLine("Debug | Current row:" + row);
+        // Check if there is a monster above
+        if (IsAmarokRoom(row + 1, column - 1) || IsAmarokRoom(row + 1, column) || IsAmarokRoom(row + 1, column + 1))
+        {
+            return true;
+        }
+
+        // Check if there is a monster to the left
+        else if (IsAmarokRoom(row, column - 1))
+        {
+            return true;
+        }
+
+        // Check if there is a monster to the right
+        else if (IsAmarokRoom(row, column + 1))
+        {
+            return true;
+        }
+
+        // Check if there is a monster below
+        else if (IsAmarokRoom(row - 1, column - 1) || IsAmarokRoom(row - 1, column) || IsAmarokRoom(row - 1, column + 1))
+        {
+            return true;
+        }
+        return false;
+    }
+
     public RoomType GetRoomType(int row, int column)
     {
         if (!IsWithinMap(row, column))
@@ -172,13 +222,14 @@ public class Map
         return Rooms[row, column];
     }
 
-    public bool IsWithinMap(int row, int column) => row >= 0 && row < Rows && column >= 0 && column < Columns;
-    public bool IsWithinMap(Location location) => IsWithinMap(location.Row, location.Column);
-
     public void SetRoomType(int row, int column, RoomType roomType)
     {
         Rooms[row, column] = roomType;
     }
+
+    public bool IsWithinMap(int row, int column) => row >= 0 && row < Rows && column >= 0 && column < Columns;
+    public bool IsWithinMap(Location location) => IsWithinMap(location.Row, location.Column);
+    public bool IsAmarokRoom(int row, int column) => GetRoomType(row, column) == RoomType.Amarok;
 }
 
 // Instances
