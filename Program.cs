@@ -92,6 +92,7 @@ public class Game
     public IMonster[,] Monsters; // Stores the monster type within each room
     Location StartLocation = new(0, 0);
     public bool GameWon { get; private set; } = false;
+    DateTime nowLocal = DateTime.Now;
 
     public Game(int rows, int columns, Location startLocation, FountainOfObjects fountain)
     {
@@ -113,10 +114,15 @@ public class Game
             if (Map.NearAmarokRoom(Player.Location)) ConsoleHelper.WriteLine("You can smell the rotten stench of an amarok in a nearby room.", ConsoleColor.DarkRed);
 
             // Request & accept movement input 
+            Location previousLocation = Player.Location;
+            bool atCaveEntrance = previousLocation == StartLocation;
             ConsoleHelper.Write("What do you want to do? ", ConsoleColor.White);
             while (true)
             {
-                bool actionSuccess = Player.RunPlayerAction();
+                (bool actionSuccess, string? actionType) = Player.RunPlayerAction();
+                if (!actionSuccess) continue;
+                if (actionType != "activate fountain" && Player.Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red); // If the player attempted to move, and remains in the space place, inform them that their movement was invalid
+                if (actionType == "activate fountain" && !Fountain.Activated) ConsoleHelper.WriteLine("The Fountain of Objects is not in this room.", ConsoleColor.Red); // If the player attempted to activate the fountian, and the fountain remains inactive, inform them that the fountain of objects is elsewhere in the cave
                 if (actionSuccess) break;
             }
 
@@ -127,14 +133,16 @@ public class Game
             // Check if player is alive. End game if player is dead
             if (!Player.IsAlive)
             {
-                ConsoleHelper.WriteLine("YOU DIED", ConsoleColor.Red);
+                TimeSpan gameLength = DateTime.Now - nowLocal;
+                ConsoleHelper.WriteLine($"YOU DIED\nGame time: {gameLength}", ConsoleColor.Red);
                 break;
             }
 
             if (Fountain.Activated && Player.Location == StartLocation)
             {
                 GameWon = true;
-                ConsoleHelper.WriteLine("The Fountain of Objects has been restored! You win!", ConsoleColor.Magenta);
+                TimeSpan gameLength = DateTime.Now - nowLocal;
+                ConsoleHelper.WriteLine($"The Fountain of Objects has been restored! You win\nGame time: {gameLength}", ConsoleColor.Magenta);
                 break;
             }
 
@@ -232,35 +240,30 @@ public class Player
         Fountain = fountain;
     }
 
-    public bool RunPlayerAction()
+    public (bool, string?) RunPlayerAction()
     {
         Location previousLocation = Location;
         bool atCaveEntrance = AtCaveEntrance();
-        string choice = Console.ReadLine();
+        string? choice = Console.ReadLine();
         switch (choice)
         {
             case "move north":
                 MovePlayer(1, 0);
-                if (Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
-                return true;
+                return (true, choice);
             case "move south":
                 MovePlayer(-1, 0);
-                if (Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
-                return true;
+                return (true, choice);
             case "move west":
                 MovePlayer(0, -1);
-                if (Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
-                return true;
+                return (true, choice);
             case "move east":
                 MovePlayer(0, 1);
-                if (Location == previousLocation) ConsoleHelper.WriteLine(atCaveEntrance ? "You cannot exit the cave yet!" : "There is a wall here.", ConsoleColor.Red);
-                return true;
+                return (true, choice);
             case "activate fountain":
                 Fountain.Activate(this);
-                if (!Fountain.Activated) ConsoleHelper.WriteLine("The Fountain of Objects is not in this room.", ConsoleColor.Red);
-                return true;
+                return (true, choice);
             default:
-                return false;
+                return (false, choice);
         }
     }
     private void MovePlayer(int rowOffset, int ColumnOffset)
